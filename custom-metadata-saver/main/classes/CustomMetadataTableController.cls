@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------//
 
 public without sharing class CustomMetadataTableController {
-    private static String BASE_URL = System.Url.getOrgDomainUrl().toExternalForm() + '/services/data/v52.0';
+    //private static String BASE_URL = System.Url.getOrgDomainUrl().toExternalForm() + '/services/data/v62.0';
 
     @AuraEnabled
     public static String getSObjectApiName(SObject customMetadataRecord) {
@@ -37,21 +37,26 @@ public without sharing class CustomMetadataTableController {
     }
 
     @AuraEnabled
-    public static DeploymentStatusResponse getDeploymentStatus(String deploymentJobId) {
+    public static String getDeploymentStatus(String deploymentJobId) {
         System.debug(LoggingLevel.INFO, 'deploymentJobId==' + deploymentJobId);
 
-        final String deploymentStatusUrl = BASE_URL + '/metadata/deployRequest/' + deploymentJobId + '?includeDetails=true';
+        //final String deploymentStatusUrl = BASE_URL + '/metadata/deployRequest/' + deploymentJobId + '?includeDetails=true';
 
         HttpRequest request = new HttpRequest();
-        request.setEndpoint(deploymentStatusUrl);
-        request.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
+        //request.setEndpoint(deploymentStatusUrl);
+        //request.setHeader('Authorization', 'Bearer ' +  UserInfo.getSessionId());
+        request.setEndpoint('callout:AccessOrg/services/data/v62.0/metadata/deployRequest/' + deploymentJobId + '?includeDetails=true'); 
         request.setHeader('Content-Type', 'application/json; charset=utf-8');
         request.setMethod('GET');
 
+        //TODO: Deal with a permission issue on the named credential - try/catch and AuraHandledException here?
+
         HttpResponse response = new Http().send(request);
-        DeploymentStatusResponse deploymentStatusResponse = (DeploymentStatusResponse) JSON.deserialize(response.getBody(), DeploymentStatusResponse.class);
-        System.debug(LoggingLevel.INFO, 'deploymentStatusResponse==' + deploymentStatusResponse);
-        return deploymentStatusResponse;
+        System.debug('Deployment Response: ' + response.getBody());
+
+        //DeploymentStatusResponse deploymentStatusResponse = (DeploymentStatusResponse) JSON.deserialize(response.getBody(), DeploymentStatusResponse.class);
+        //System.debug(LoggingLevel.INFO, 'deploymentStatusResponse==' + deploymentStatusResponse);
+        return response.getBody();
     }
 
     // DTO for picklist options since Schema.PicklistEntry isn't supported for aura-enabled methods

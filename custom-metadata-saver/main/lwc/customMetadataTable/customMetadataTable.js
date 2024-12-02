@@ -2,7 +2,7 @@ import { LightningElement, api, wire } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import { getObjectInfo } from 'lightning/uiObjectInfoApi';
 import getSObjectApiName from '@salesforce/apex/CustomMetadataTableController.getSObjectApiName';
-// import getPicklistOptions from '@salesforce/apex/CustomMetadataTableController.getPicklistOptions';
+// import getPicklistOptions from '@salesforce/apex/CustomMetadataTableController.  ';
 import deploy from '@salesforce/apex/CustomMetadataTableController.deploy';
 import getDeploymentStatus from '@salesforce/apex/CustomMetadataTableController.getDeploymentStatus';
 
@@ -46,7 +46,6 @@ export default class CustomMetadataTable extends LightningElement {
         let customMetadataRecord = this.records[0];
         getSObjectApiName({ customMetadataRecord: customMetadataRecord })
             .then(result => {
-                console.log('result==' + result);
                 this.objectApiName = result;
             })
             .catch(error => {
@@ -57,8 +56,7 @@ export default class CustomMetadataTable extends LightningElement {
     @wire(getObjectInfo, { objectApiName: '$objectApiName' })
     getSObjectDescribe({ error, data }) {
         if (error) {
-            // TODO add error handling
-            console.log('an error occurred');
+            console.log('Error: ' + error);
         } else if (data) {
             this._loadColumns(data.fields);
             if (!this.title) {
@@ -79,7 +77,7 @@ export default class CustomMetadataTable extends LightningElement {
     addNewRecord(event) {
         this.newRecord.DeveloperName = this.newRecordDeveloperName;
         this.newRecord.MasterLabel = this.newRecordMasterLabel;
-        console.log('this.newRecord==' + JSON.stringify(this.newRecord));
+        //console.log('New Record Creation Response: ' + JSON.stringify(this.newRecord));
 
         let records = JSON.parse(JSON.stringify(this.records));
         records.unshift(this.newRecord);
@@ -112,16 +110,11 @@ export default class CustomMetadataTable extends LightningElement {
             message,
             variant
         });
-        console.log('toast event==' + JSON.stringify(event));
         this.dispatchEvent(event);
     }
 
     _loadColumns(fields) {
-        console.log('fields==');
-        console.log(fields);
         let sobjectFieldsByDeveloperName = new Map(Object.entries(fields));
-        console.log('sobjectFieldsByDeveloperName==');
-        console.log(sobjectFieldsByDeveloperName);
         this.columns = [];
 
         this.fieldsToDisplay.split(',').forEach(fieldApiName => {
@@ -132,7 +125,7 @@ export default class CustomMetadataTable extends LightningElement {
                 this.columns.push(column);
             }
         });
-        console.log('this.columns==' + JSON.stringify(this.columns));
+        //console.log('Table Columns: ' + JSON.stringify(this.columns));
     }
 
     _generateColumn(field) {
@@ -205,7 +198,7 @@ export default class CustomMetadataTable extends LightningElement {
     _deployCustomMetadataRecords(updatedRecords) {
         deploy({ customMetadataRecords: updatedRecords })
             .then(result => {
-                console.log('enquequed deployment, deployment ID==' + result);
+                //console.log('Scheduled Deployment Job ID: ' + result);
                 this.isDeploying = true;
                 this._deploymentId = result;
             })
@@ -220,34 +213,43 @@ export default class CustomMetadataTable extends LightningElement {
     async _getDeploymentStatus() {
         if (this._deploymentId) {
             let deploymentStatusResponse = await getDeploymentStatus({ deploymentJobId: this._deploymentId });
-            console.log('deploymentStatusResponse==' + JSON.stringify(deploymentStatusResponse));
-            if (deploymentStatusResponse && deploymentStatusResponse.deployResult) {
-                this.deploymentStatus = deploymentStatusResponse.deployResult.status;
+            //console.log('Deployment Status Full Details: ' + JSON.stringify(deploymentStatusResponse));
+            var jsonMessage = JSON.parse(deploymentStatusResponse);
+            
+            if (jsonMessage.deployResult.success) {
+                this.deploymentStatus = jsonMessage.deployResult.status;
+                //console.log('Deployment Status: ' + this.deploymentStatus);
 
-                if (deploymentStatusResponse.deployResult.details.componentFailures[0]) {
-                    this.deploymentMessage = 'Error: ' + deploymentStatusResponse.deployResult.details.componentFailures[0].problem;
+                if (jsonMessage.deployResult.details.componentFailures.length > 0) {
+                    this.deploymentMessage = 'Error: ' + jsonMessage.deployResult.details.componentFailures[0].problem;
                 } else {
                     this.deploymentMessage = null;
                 }
-            }
-        }
 
-        const statusPromise = new Promise(resolve => {
-            let timeoutId;
-            if (this._resolvedDeploymentStatuses.includes(this.deploymentStatus) == false) {
-                timeoutId = setTimeout(() => this._getDeploymentStatus(), 2000);
-            } else {
+                const statusPromise = new Promise(resolve => {
+                    let timeoutId;
+                    if (this._resolvedDeploymentStatuses.includes(this.deploymentStatus) == false) {
+                        timeoutId = setTimeout(() => this._getDeploymentStatus(), 2000);
+                    } else {
+                        this.isDeploying = null;
+                        if (this.deploymentStatus == 'Succeeded') {
+                            this.handleCancel();
+                            this.records = this._draftRecords;
+                        }
+        
+                        this._showToastEvent('success', 'Deployment Completed', 'Your changes were successfully deployed.');
+                        clearTimeout(timeoutId);
+                        resolve();
+                    }
+                });
+                await statusPromise;
+            }
+            else {
                 this.isDeploying = null;
-                if (this.deploymentStatus == 'Succeeded') {
-                    this.handleCancel();
-                    this.records = this._draftRecords;
-                }
-
-                this._showToastEvent('success', 'Deployment Completed', 'CMDT records were successfully deployed');
-                clearTimeout(timeoutId);
-                resolve();
+                this.deploymentMessage = 'Error: ' + jsonMessage[0].message;
+                this.handleCancel(); 
+                this._showToastEvent('error', 'Deployment Status Check Failed', this.deploymentMessage);
             }
-        });
-        await statusPromise;
+        }        
     }
 }
